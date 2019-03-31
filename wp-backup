@@ -84,7 +84,7 @@ Colors() {
 	On_ICyan="${Escape}[0;106m"    # Cyan
 	On_IWhite="${Escape}[0;107m"   # White
 }
-Colors;
+Colors
 
 function print_usage() {
 	echo
@@ -159,9 +159,6 @@ done
 date=`date +%Y-%m-%d`
 themes="wp-content/themes"
 plugins="wp-content/plugins"
-# Contents of maintenance file
-# This puts WordPress in maintenance mode
-maintenance='<?php \n\$upgrading = time();'
 
 # Get blog's name
 wp_blogname=$(wp @$site option get blogname)
@@ -209,7 +206,8 @@ function maintenance_in {
 	echo -e ${UYellow}"*** Entering maintenance mode ***"${Reset}
 	echo
 	start=`date +%s`
-	# create .maintenance file in WordPress root directory to put in maintenance mode
+	# create .maintenance file in WordPress' root directory to put in maintenance mode
+	maintenance='<?php \n\$upgrading = time();'
 	ssh $site " echo -e \"$maintenance\" > \"$wp_path.maintenance\" "
 }
 
