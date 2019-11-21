@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# TO DO:
+# USE FUNCTIONS BETTER
+# OPTION TO USE ZIP FORMAT
+
 set -e
 set -o pipefail
 # output all commands ran to console
@@ -94,21 +98,22 @@ function print_usage() {
 	echo
 	echo -e ${Purple}"DESCRIPTION"${Reset}
 	echo
-	echo "	Selectively backup WordPress site depending on option flag used."
+	echo "	Selectively backup WordPress host depending on option flag used."
 	echo
 	echo -e ${Purple}"SYNOPSYS"${Reset}
 	echo
-	echo "	wp-backup <flag(s)> <remote site>"
+	echo "	wp-backup --host <remote host> <flag(s)>"
 	echo
 	echo -e ${Purple}"FLAGS:"${Reset}
-	echo "	--help,		-h	Print this help message"
-	echo "	--full,		-f	All of WordPress (minus uploads, cache and other wp-content folders), including database"
+	echo "	--help		Print this help message"
+	echo "	--full,		-f	All of WordPress (minus uploads, cache and other wp-content directories), including database"
 	echo "	--database,	-d	Database"
 	echo "	--plugins,	-p	Plugins"
 	echo "	--themes,	-t	Themes"
 	echo "	--uploads,	-u	Uploads"
-	echo -e "	--site,		-s	Remote site to backup from. Must (${RedF}both${Reset}) exist in ~/.wpcli/config.yml as an alias && ~/.ssh/config as a Host"
-	echo "	--folder,	-f	Local folder to create back up files onto. If not set, will default to home folder."
+	echo "	--content,	-c	wp-content"
+	echo -e "	--host,		-h	Remote host to backup from. Must (${RedF}both${Reset}) exist in ~/.wpcli/config.yml as an alias && ~/.ssh/config as a Host"
+	echo "	--directory,	-D	Local directory to create back up files onto. If not set, will default to current directory."
 	echo
 	exit 1
 }
@@ -118,7 +123,7 @@ function print_usage() {
 while [ ! $# -eq 0 ]
 do
 	case "$1" in
-		--help | -h)
+		--help )
 			print_usage
 			exit
 			;;
@@ -138,13 +143,45 @@ do
 		--uploads | -u)
 			uploads_flag="true"
 			;;
-		--site | -s)
-			site=$2
+		--content | -c)
+			content_flag="true"
 			;;
-		--folder | -f)
-			folder=$2
+		--host | -h)
+			host=$2
+			;;
+		--directory | -D)
+			directory=$2
+			# Directory exists or exit
+			if [ ! -d "$directory" ]
+			then
+				echo -e ${BRed}"Directory $directory does not exists!"${Reset}
+				echo
+				while true
+				do
+					read -r -p "Would you like to create it? [Y/n] " input
+					echo
+
+					case $input in
+						[yY][eE][sS]|[yY]|"")
+						mkdir --parents $directory
+						echo -e ${Underline}"Created:${Reset} $directory"
+						break
+						;;
+						[nN][oO]|[nN])
+						echo "Suit yourself... Exiting!"
+						exit
+						;;
+						*)
+						echo "Invalid input..."
+						;;
+					esac
+				done
+			fi
+			# Verify trailing slash exists, if not add it.
+			[[ $directory != */ ]] && directory="$directory/"
 			;;
 		-*)
+			echo
 			echo -e ${Red}"$1${Reset} is not a valid argument!"
 			print_usage
 			exit 1
@@ -153,48 +190,22 @@ do
 	shift
 done
 
-[[ -z "$site" ]] && echo "This command must have at least one option flag followed by the remote site's name!" && print_usage
-[[ -z "$folder" ]] && $folder="~/"
+[[ -z "$host" ]] && echo "This command must have at least one option flag followed by the remote host's name!" && print_usage
+[[ -z "$directory" ]] && directory="$PWD/"
 
 date=`date +%Y-%m-%d`
-themes="wp-content/themes"
 plugins="wp-content/plugins"
+themes="wp-content/themes"
+uploads="wp-content/uploads"
+content="wp-content"
 
 # Get blog's name
-wp_blogname=$(wp @$site option get blogname)
+wp_blogname=$(wp @$host option get blogname)
 # Remove spaces
 blogname=${wp_blogname//[[:space:]]/}
 
-if [ -d $folder$blogname/backups/$date ]
-then
-	echo
-	echo -e ${BRed}"Backup directory exists!"${Reset}
-	while true
-	do
-		read -r -p "Remove existing backup? [Y/n] " input
-		echo
-
-		case $input in
-			[yY][eE][sS]|[yY])
-				rm -rf $folder$blogname/backups/$date
-				echo -e ${Underline}"Deleted:${Reset} $folder$blogname/backups/$date"
-				break
-				;;
-			[nN][oO]|[nN])
-				echo "Leaving existing backup as is... Exiting!"
-				exit
-				;;
-			*)
-				echo "Invalid input..."
-				;;
-		esac
-	done
-fi
-
-mkdir --parents $folder$blogname/backups/$date
-
 # wp_abspath=/var/www/wp-config.php
-wp_abspath="$(wp @$site config path)"
+wp_abspath="$(wp @$host config path)"
 
 # wp_path=/var/www/
 [[ $wp_abspath != *\wp-config.php ]] && echo ${Red}"Path looks bad: $wp_abspath"${Reset} && exit 1
@@ -202,46 +213,59 @@ wp_path=${wp_abspath//wp-config.php}
 
 function maintenance_in {
 	echo
-	echo
 	echo -e ${UYellow}"*** Entering maintenance mode ***"${Reset}
-	echo
 	start=`date +%s`
 	# create .maintenance file in WordPress' root directory to put in maintenance mode
 	maintenance='<?php \n\$upgrading = time();'
-	ssh $site " echo -e \"$maintenance\" > \"$wp_path.maintenance\" "
+	ssh $host " echo -e \"$maintenance\" > \"$wp_path.maintenance\" "
 }
 
 function maintenance_out {
-	ssh $site rm -f $wp_path.maintenance
+	ssh $host rm -f $wp_path.maintenance
 	end=`date +%s`
 	echo
 	echo
 	echo -e ${UYellow}"*** Exiting maintenance mode after $((end-start)) seconds ***"${Reset}
+	echo
 }
 
 function backup_db {
 	echo -n "Database..."
-	wp @$site db export - > $folder$blogname/backups/$date/$blogname-db-$date.sql
+	wp @$host db export - > $directory$blogname-db-$date.sql
 	echo -e ${Green}"done!"${Reset}
 }
 
 function backup_plugins {
 	echo -n "Plugins..."
-	ssh $site tar --ignore-failed-read --absolute-names \
-	-zcf $blogname-plugins-$date.tar.gz $wp_path$plugins
+	ssh $host -T "cd $wp_path; tar --ignore-failed-read \
+	-zcf $blogname-plugins-$date.tar.gz $plugins"
 	echo -e ${Green}"done!"${Reset}
 }
 
 function backup_themes {
 	echo -n "Themes..."
-	ssh $site tar --ignore-failed-read --absolute-names \
-	-zcf $blogname-themes-$date.tar.gz $wp_path$themes
+	ssh $host -T "cd $wp_path; tar --ignore-failed-read \
+	-zcf $blogname-themes-$date.tar.gz $themes"
+	echo -e ${Green}"done!"${Reset}
+}
+
+function backup_uploads {
+	echo -n "Uploads..."
+	ssh $host -T "cd $wp_path; tar --ignore-failed-read \
+	-zcf $blogname-uploads-$date.tar.gz $uploads"
+	echo -e ${Green}"done!"${Reset}
+}
+
+function backup_content {
+	echo -n "Content..."
+	ssh $host -T "cd $wp_path; tar --ignore-failed-read \
+	-zcf $blogname-content-$date.tar.gz $content"
 	echo -e ${Green}"done!"${Reset}
 }
 
 function backup_wp {
 	echo -n "WordPress..."
-	ssh $site tar --ignore-failed-read --absolute-names \
+	ssh $host tar --ignore-failed-read \
 	--exclude="wp-snapshots" \
 	--exclude="wp-content/*backup*" \
 	--exclude="wp-content/cache" \
@@ -252,29 +276,30 @@ function backup_wp {
 	echo -e ${Green}"done!"${Reset}
 }
 
-function backup_uploads {
-	echo -n "Uploads..."
-	ssh $site"wp-content/uploads" tar --ignore-failed-read --absolute-names \
-	-zcf $blogname-all-$date.tar.gz $wp_path
-	echo -e ${Green}"done!"${Reset}
+function download {
+	echo -n "Downloading backups..."
+	rsync -az --info=progress2 --remove-source-files $host:$wp_path$blogname-*-$date.tar.gz $directory
 }
 
-function download {
-	echo "Downloading backups..."
-	rsync -az --info=progress2 --remove-source-files $site:$blogname-*-$date.tar.gz $folder$blogname/backups/$date
+function finish_message {
+	echo
+	echo -e ${Underline}"Finished backing up $wp_blogname to:"${Reset}
+	echo "$directory"
 }
+
+maintenance_in
 
 echo
 echo
 echo -e ${Underline}"Backing up $wp_blogname:"${Reset}
-
-maintenance_in
+echo
 
 if [[ $wp_flag == "true" ]]; then
 	backup_wp
 	backup_db
 	maintenance_out
 	download
+	finish_message
 	exit
 fi
 
@@ -282,13 +307,12 @@ fi
 [[ $plugins_flag == "true" ]] && backup_plugins
 [[ $themes_flag == "true" ]] && backup_themes
 [[ $uploads_flag == "true" ]] && backup_uploads
+[[ $content_flag == "true" ]] && backup_content
 
 maintenance_out
 # Check there is something to download
-[[ -n "$plugins_flag" ]] || [[ -n "$plugins_flag" ]] || [[ -n "$plugins_flag" ]] || [[ -n "$plugins_flag" ]] && download
+[[ -n "$db_flag" ]] || [[ -n "$plugins_flag" ]] || [[ -n "$themes_flag" ]] || [[ -n "$uploads_flag" ]] || [[ -n "$content_flag" ]] && download
 
-echo
-echo -e ${Underline}"Finished backing up $wp_blogname to:"${Reset}
-echo "$folder$blogname/backups/$date"
+finish_message
 
 exit

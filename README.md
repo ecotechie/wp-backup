@@ -1,5 +1,5 @@
 # WordPress Backup script
-  
+
 ## DESCRIPTION
 
 Selectively backup WordPress host depending on option flag used.
@@ -10,9 +10,9 @@ Selectively backup WordPress host depending on option flag used.
 
 ## FLAGS:
 
-**--help**,		**-h**	Print this help message
+**--help**,				Print this help message
 
-**--full**,		**-f**	All of WordPress (minus uploads, cache and other wp-content folders), including database
+**--full**,		**-f**	All of WordPress (minus uploads, cache and other wp-content directories), including database
 
 **--database**,	**-d**	Database
 
@@ -22,9 +22,9 @@ Selectively backup WordPress host depending on option flag used.
 
 **--uploads**,	**-u**	Uploads
 
-**--host**,		**-s**	Remote host to backup from. Must both exist in ~/.wpcli/config.yml as an alias && ~/.ssh/config as a Host
+**--host**,		**-h**	Remote host to backup from. Must both exist in ~/.wpcli/config.yml as an alias && ~/.ssh/config as a Host
 
-**--folder**,	**-f**	Local folder to create back up files onto. If not set, will default to home folder.
+**--directory**,	**-d**	Local directory to create back up files onto. If not set, will default to home directory.
 
 
-![wp-backup](https://github.com/ecotechie/wp-backup/raw/master/Demo-wp-backup.gif "Backing up database and plugins folder")
+![wp-backup](https://github.com/ecotechie/wp-backup/raw/master/Demo-wp-backup.gif "Backing up database and plugins directory")
